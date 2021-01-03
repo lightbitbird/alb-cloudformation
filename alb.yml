@@ -1,0 +1,524 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description:
+  Example of web environment with ALB
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: "Project Name Prefix"
+        Parameters:
+          - "ProjectName"
+      - Label:
+          default: "InternetALB Configuration"
+        Parameters:
+          - "ALBName"
+      - Label:
+          default: "EC2Instance Configuration"
+        Parameters:
+          - "KeyPairName"
+          - "EC2InstanceName"
+          - "EC2InstanceAMI"
+          - "EC2InstanceType"
+          - "EC2InstanceVolumeType"
+          - "EC2InstanceVolumeSize"
+          - "SSHEnabledAccessCidrBlock"
+
+    ParameterLabels:
+      ALBName:
+        default: "ALBName"
+      KeyPairName:
+        default: "KeyPairName"
+      EC2InstanceName:
+        default: "EC2 Name"
+      EC2InstanceAMI:
+        default: "EC2 AMI"
+      EC2InstanceType:
+        default: "EC2 InstanceType"
+      EC2InstanceVolumeType:
+        default: "EC2 VolumeType"
+      EC2InstanceVolumeSize:
+        default: "EC2 VolumeSize"
+      SSHEnabledAccessCidrBlock:
+        default: "SSH Ingress CidrBlock"
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------# 
+Parameters:
+  ProjectName:
+    Type: "String"
+  ALBName:
+    Type: "String"
+    Default: "web"
+  KeyPairName:
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Default: ""
+  EC2InstanceName:
+    Type: "String"
+    Default: "web"
+  EC2InstanceAMI:
+    Type: "String"
+    Default: ""
+  EC2InstanceType:
+    Type: "String"
+    Default: "t2.micro"
+  EC2InstanceVolumeType:
+    Type: "String"
+    Default: "gp2"
+  EC2InstanceVolumeSize:
+    Type: "String"
+    Default: "8"
+  SSHEnabledAccessCidrBlock:
+    Type: "String"
+
+
+Mappings:
+  Subnets:
+    VpcSubnet:
+      Ipv4Cidr1stOctet: "172"
+      Ipv4Cidr2ndOctet: "10"
+      Ipv4Cidr: "16"
+    PublicSubnetOne:
+      Ipv4Cidr3rdOctet: "0"
+    PublicSubnetTwo:
+      Ipv4Cidr3rdOctet: "1"
+    PublicSubnetThree:
+      Ipv4Cidr3rdOctet: "2"
+    EnabledAccessCidrBlock:
+      Ipv4CidrBlock: "0.0.0.0/0"
+  Regions:
+    ap-northeast-1:
+      RegionName: "Tokyo Region"
+    us-east-1:
+      RegionName: "Virginia Region"
+
+
+Resources:
+  # ------------------------------------------------------------#
+  #  VPC
+  # ------------------------------------------------------------#
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Sub
+        - "${1stOctet}.${2ndOctet}.0.0/${Ipv4Cidr}"
+        - 1stOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr1stOctet" ]
+          2ndOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr2ndOctet"]
+          Ipv4Cidr: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr"]
+      InstanceTenancy: "default"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-vpc"
+
+
+  # ------------------------------------------------------------#
+  #  Public Subnets
+  # ------------------------------------------------------------#
+  PublicSubnetA:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      VpcId: !Ref "VPC"
+      CidrBlock: !Sub
+        - "${1stOctet}.${2ndOctet}.${3rdOctet}.0/24"
+        - 1stOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr1stOctet" ]
+          2ndOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr2ndOctet"]
+          3rdOctet: !FindInMap [ "Subnets", "PublicSubnetOne", "Ipv4Cidr3rdOctet"]
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-pub-a"
+
+  PublicSubnetC:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      VpcId: !Ref "VPC"
+      CidrBlock: !Sub
+        - "${1stOctet}.${2ndOctet}.${3rdOctet}.0/24"
+        - 1stOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr1stOctet" ]
+          2ndOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr2ndOctet"]
+          3rdOctet: !FindInMap [ "Subnets", "PublicSubnetTwo", "Ipv4Cidr3rdOctet"]
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-pub-c"
+
+  PublicSubnetD:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: !Ref "AWS::Region"
+      VpcId: !Ref "VPC"
+      CidrBlock: !Sub
+        - "${1stOctet}.${2ndOctet}.${3rdOctet}.0/24"
+        - 1stOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr1stOctet" ]
+          2ndOctet: !FindInMap [ "Subnets", "VpcSubnet", "Ipv4Cidr2ndOctet"]
+          3rdOctet: !FindInMap [ "Subnets", "PublicSubnetThree", "Ipv4Cidr3rdOctet"]
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-pub-d"
+
+
+  # ------------------------------------------------------------#
+  #  Route Tables for public Subnets
+  # ------------------------------------------------------------#
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref "VPC"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-pub-rtb"
+
+  PublicSubnetARouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref "PublicRouteTable"
+      SubnetId: !Ref "PublicSubnetA"
+
+  PublicSubnetCRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref "PublicRouteTable"
+      SubnetId: !Ref "PublicSubnetC"
+
+  PublicSubnetDRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref "PublicRouteTable"
+      SubnetId: !Ref "PublicSubnetD"
+
+  VPCInternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-igw"
+
+  IgwAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref "VPC"
+      InternetGatewayId: !Ref "VPCInternetGateway"
+
+  PublicRouteToInternet:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref "PublicRouteTable"
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref "VPCInternetGateway"
+
+  # ------------------------------------------------------------#
+  #  ElasticIP
+  # ------------------------------------------------------------#
+  ElasticIP01:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: "vpc"
+
+  ElasticIP01Associate:
+    Type: "AWS::EC2::EIPAssociation"
+    Properties:
+      AllocationId: !GetAtt "ElasticIP01.AllocationId"
+      InstanceId: !Ref "EC2Instance01"
+
+  ElasticIP02:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: "vpc"
+
+  ElasticIP02Associate:
+    Type: "AWS::EC2::EIPAssociation"
+    Properties:
+      AllocationId: !GetAtt "ElasticIP02.AllocationId"
+      InstanceId: !Ref "EC2Instance02"
+
+  # ------------------------------------------------------------#
+  #  IAM Role for EC2
+  # ------------------------------------------------------------#
+  EC2IAMRole: 
+    Type: "AWS::IAM::Role"
+    Properties: 
+      RoleName: !Sub "${ProjectName}-${EC2InstanceName}-role"
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Principal: 
+              Service: 
+                - "ec2.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns: 
+        - "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+        - "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+
+  EC2InstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - Ref: EC2IAMRole
+      InstanceProfileName: !Sub "${ProjectName}-${EC2InstanceName}-profile"
+
+  # ------------------------------------------------------------#
+  #  EC2Instance az-A
+  # ------------------------------------------------------------#
+  EC2Instance01:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-${EC2InstanceName}-01"
+      ImageId: !Ref "EC2InstanceAMI"
+      InstanceType: !Ref "EC2InstanceType"
+      KeyName: !Ref "KeyPairName"
+      IamInstanceProfile: !Ref "EC2InstanceProfile"
+      DisableApiTermination: false
+      EbsOptimized: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeType: "gp2"
+            VolumeSize: !Ref "EC2InstanceVolumeSize"
+      SecurityGroupIds:
+        - !Ref "ManagementSecurityGroup"
+        - !Ref "WebSecurityGroup"
+      SubnetId: !Ref "PublicSubnetA"
+      UserData:
+        Fn::Base64: !Sub |
+          #! /bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          echo `hostname` > /var/www/html/index.html
+
+  # ------------------------------------------------------------#
+  #  EC2Instance az-C
+  # ------------------------------------------------------------#
+  EC2Instance02:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-${EC2InstanceName}-02"
+      ImageId: !Ref "EC2InstanceAMI"
+      InstanceType: !Ref "EC2InstanceType"
+      KeyName: !Ref "KeyPairName"
+      IamInstanceProfile: !Ref "EC2InstanceProfile"
+      DisableApiTermination: false
+      EbsOptimized: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeType: "gp2"
+            VolumeSize: !Ref "EC2InstanceVolumeSize"
+      SecurityGroupIds:
+        - !Ref "ManagementSecurityGroup"
+        - !Ref "WebSecurityGroup"
+      SubnetId: !Ref "PublicSubnetC"
+      UserData:
+        Fn::Base64: !Sub |
+          #! /bin/bash
+          yum update -y
+          yum install -y httpd
+          systemctl start httpd
+          echo `hostname` > /var/www/html/index.html
+
+  # ------------------------------------------------------------#
+  #  Management SecurityGroup
+  # ------------------------------------------------------------#
+  ManagementSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties: 
+      VpcId: !Ref "VPC"
+      GroupName: !Sub "${ProjectName}-management-sg"
+      GroupDescription: "Security Group for Management"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-management-sg"
+
+  ManagementSecurityGroupIngressSSH:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !GetAtt "ManagementSecurityGroup.GroupId"
+      CidrIp: !Ref "SSHEnabledAccessCidrBlock"
+      IpProtocol: "tcp"
+      FromPort: 22
+      ToPort: 22
+
+  # ------------------------------------------------------------#
+  #  SecurityGroup for ALB
+  # ------------------------------------------------------------#
+  ALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      VpcId: !Ref "VPC"
+      GroupName: !Sub "${ProjectName}-alb-sg"
+      GroupDescription: "Security Group for ALB"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-alb-sg"
+
+  ALBSecurityGroupIngressHttp:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !GetAtt "ALBSecurityGroup.GroupId"
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      CidrIp: "0.0.0.0/0"
+
+  ALBSecurityGroupIngressHttps:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !GetAtt "ALBSecurityGroup.GroupId"
+      IpProtocol: "tcp"
+      FromPort: 443
+      ToPort: 443
+      CidrIp: "0.0.0.0/0"
+
+  # ------------------------------------------------------------#
+  #  SecurityGroup for Web
+  # ------------------------------------------------------------#
+  WebSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      VpcId: !Ref "VPC"
+      GroupName: !Sub "${ProjectName}-web-sg"
+      GroupDescription: "Security Group for Web"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-web-sg"
+
+  WebSecurityGroupIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      GroupId: !GetAtt "WebSecurityGroup.GroupId"
+      SourceSecurityGroupId: !GetAtt "ALBSecurityGroup.GroupId"
+
+#  WebSecurityGroupEgressHttp:
+#    Type: "AWS::EC2::SecurityGroupEgress"
+#    Properties:
+#      IpProtocol: "tcp"
+#      FromPort: 80
+#      ToPort: 80
+#      DestinationSecurityGroupId: !GetAtt "ALBSecurityGroup.GroupId"
+#      GroupId: !GetAtt "WebSecurityGroup.GroupId"
+#
+#  WebSecurityGroupEgressHttps:
+#    Type: "AWS::EC2::SecurityGroupEgress"
+#    Properties:
+#      IpProtocol: "tcp"
+#      FromPort: 443
+#      ToPort: 443
+#      DestinationSecurityGroupId: !GetAtt "ALBSecurityGroup.GroupId"
+#      GroupId: !GetAtt "WebSecurityGroup.GroupId"
+
+  # ------------------------------------------------------------#
+  #  Target Group
+  # ------------------------------------------------------------#
+  TargetGroup: 
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties: 
+      VpcId: !Ref "VPC"
+      Name: !Sub "${ProjectName}-${ALBName}-tg"
+      Protocol: "HTTP"
+      Port: 80
+      HealthCheckProtocol: "HTTP"
+      HealthCheckPath: "/"
+      HealthCheckPort: "traffic-port"
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      HealthCheckTimeoutSeconds: 5
+      HealthCheckIntervalSeconds: 10
+      Matcher: 
+        HttpCode: 200
+      Tags: 
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-${ALBName}-tg"
+      TargetGroupAttributes: 
+        - Key: "deregistration_delay.timeout_seconds"
+          Value: 300
+        - Key: "stickiness.enabled"
+          Value: false
+        - Key: "stickiness.type"
+          Value: "lb_cookie"
+        - Key: "stickiness.lb_cookie.duration_seconds"
+          Value: 86400
+      Targets:
+        - Id: !Ref "EC2Instance01"
+          Port: 80
+        - Id: !Ref "EC2Instance02"
+          Port: 80
+
+  # ------------------------------------------------------------#
+  #  ALB
+  # ------------------------------------------------------------#
+  ALB:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties: 
+      Name: !Sub "${ProjectName}-${ALBName}-alb"
+      Scheme: "internet-facing"
+      LoadBalancerAttributes: 
+        - Key: "deletion_protection.enabled"
+          Value: false
+        - Key: "idle_timeout.timeout_seconds"
+          Value: 60
+      SecurityGroups:
+        - !Ref "ALBSecurityGroup"
+      Subnets: 
+        - !Ref "PublicSubnetA"
+        - !Ref "PublicSubnetC"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-${ALBName}-alb"
+
+  ALBListener: 
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties: 
+      DefaultActions: 
+        - TargetGroupArn: !Ref "TargetGroup"
+          Type: "forward"
+      LoadBalancerArn: !Ref "ALB"
+      Port: 80
+      Protocol: "HTTP"
+
+
+Outputs:
+  ALBDNSName:
+    Value: !GetAtt "ALB.DNSName"
+    Export:
+      Name: !Sub "${ProjectName}-${ALBName}-alb-dns-name"
+  EC2Instance01Id:
+    Value: !Ref "EC2Instance01"
+    Export:
+      Name: !Sub "${ProjectName}-${EC2InstanceName}-01-id"
+  EC2Instance02Id:
+    Value: !Ref "EC2Instance02"
+    Export:
+      Name: !Sub "${ProjectName}-${EC2InstanceName}-02-id"
+  EC2Instance01EIP:
+    Value: !GetAtt "EC2Instance01.PublicIp"
+    Export:
+      Name: !Sub "${ProjectName}-${EC2InstanceName}-01-eip"
+  EC2Instance02EIP:
+    Value: !GetAtt "EC2Instance02.PublicIp"
+    Export:
+      Name: !Sub "${ProjectName}-${EC2InstanceName}-02-eip"
